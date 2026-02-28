@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compaginador Scrapbook & PDF</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Cropper.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
+    <!-- Cropper.js JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+    <style>
+        /* Estilos base */
+        body {
+            background-color: #e5e7eb;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Área Principal */
+        #main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Barra Lateral (Galería) */
+        #sidebar {
+            width: 320px;
+            background-color: #1f2937;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #374151;
+            z-index: 20;
+        }
+
+        #gallery {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            align-content: start;
+        }
+
+        .gallery-item {
+            position: relative; /* Necesario para el badge de "Usado" */
+        }
+
+        .thumb {
+            aspect-ratio: 1;
+            object-fit: cover;
+            width: 100%;
+            border-radius: 0.375rem;
+            cursor: grab;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            background-color: #374151;
+        }
+        .thumb:hover {
+            border-color: #60a5fa;
+            transform: scale(1.05);
+            opacity: 1 !important; /* Al hacer hover recupera opacidad */
+            z-index: 10;
+        }
+        .thumb.dragging {
+            opacity: 0.5;
+            border-color: #fcd34d;
+        }
+
+        /* ESTILOS DE IMAGEN USADA */
+        .gallery-item.used .thumb, .gallery-item.used.img-placeholder {
+            border-color: #22c55e; /* Verde */
+            opacity: 0.5; /* Un poco transparente para indicar que ya está */
+        }
+        
+        .used-badge {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background-color: #22c55e;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* Placeholder de imagen faltante */
+        .img-placeholder {
+            width: 100%;
+            height: 100%;
+            background-color: #e5e7eb;
+            color: #6b7280;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 0.7rem;
+            padding: 4px;
+            border: 1px dashed #9ca3af;
+            overflow: hidden;
+        }
+        .gallery-item.img-placeholder {
+            aspect-ratio: 1;
+            border-radius: 0.375rem;
+            background-color: #374151;
+            color: #9ca3af;
+            border-color: #4b5563;
+            border-width: 2px; /* Para que se note el verde */
+        }
+
+        /* Separador en Galería */
+        .gallery-separator {
+            grid-column: span 2;
+            background-color: #374151;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            cursor: move;
+            position: relative;
+            margin: 5px 0;
+            border: 1px dashed #4b5563;
+        }
+        .gallery-separator::after {
+            content: '';
+            width: 80%;
+            height: 2px;
+            background-color: #9ca3af;
+            border-radius: 1px;
+        }
+        .gallery-separator .remove-sep {
+            position: absolute;
+            right: 5px;
+            color: #ef4444;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+            font-weight: bold;
+        }
+        .gallery-separator:hover .remove-sep { display: block; }
+
+        /* Área de Trabajo (Hojas) */
+        #workspace {
+            flex: 1;
+            background-color: #525659;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        /* La Hoja A4 */
+        .sheet-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center; 
+        }
+
+        .sheet {
+            background-color: white;
+            width: 210mm;
+            height: 297mm;
+            padding: 10mm; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            display: grid;
+            gap: 4mm;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Modo Freeform (Scrapbook) */
+        .sheet.freeform {
+            display: block;
+            padding: 0;
+        }
+        
+        .free-item {
+            position: absolute;
+            cursor: move;
+            touch-action: none;
+            box-sizing: border-box;
+            border: 1px solid transparent; 
+        }
+        
+        .free-item img, .free-item .img-placeholder {
+            width: 100%;
+            height: 100%;
+            object-fit: fill; 
+            pointer-events: none;
+            display: block;
+        }
+
+        .free-item.selected {
+            border: 2px solid #3b82f6;
+            z-index: 100 !important;
+        }
+
+        .resize-handle, .rotate-handle, .delete-handle {
+            display: none;
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 50%;
+            z-index: 101;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .free-item.selected .resize-handle,
+        .free-item.selected .rotate-handle,
+        .free-item.selected .delete-handle {
+            display: block;
+        }
+
+        .resize-handle {
+            bottom: -10px;
+            right: -10px;
+            cursor: se-resize;
+            background: #fff;
+            border: 2px solid #3b82f6;
+        }
+
+        .rotate-handle {
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: grab;
+            background: #fff;
+            border: 2px solid #10b981;
+        }
+        .rotate-handle::after {
+            content: '';
+            position: absolute;
+            top: 18px;
+            left: 8px;
+            width: 2px;
+            height: 15px;
+            background: #10b981;
+        }
+
+        .delete-handle {
+            top: -10px;
+            right: -10px;
+            background: #ef4444;
+            cursor: pointer;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* Controles hoja */
+        .sheet-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            background-color: #e5e7eb;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            width: 210mm;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        
+        .layout-btn {
+            background: white;
+            border: 1px solid #d1d5db;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            font-size: 1rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+        }
+        .layout-btn:hover { background: #eff6ff; border-color: #3b82f6; color: #2563eb; }
+        .layout-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+
+        /* Grid Classes */
+        .grid-2x3 { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 1fr); }
+        .grid-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+
+        /* Las Celdas (Modo Grid) */
+        .drop-zone {
+            border: 2px dashed #e5e7eb;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            background-color: #f9fafb;
+            transition: all 0.2s;
+        }
+        .drop-zone.drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+        .drop-zone img { width: 100%; height: 100%; object-fit: contain; }
+        
+        .img-overlay-btn {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .drop-zone:hover .img-overlay-btn { display: flex; }
+        .btn-delete { top: 5px; right: 5px; background: rgba(239, 68, 68, 0.9); }
+        .btn-edit { top: 5px; right: 38px; background: rgba(37, 99, 235, 0.9); }
+
+        /* Modal Editor */
+        #editor-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .cropper-container-wrapper {
+            flex: 1;
+            background: #333;
+            max-height: calc(100vh - 140px);
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        /* Estilos Impresión */
+        @media print {
+            body { height: auto; overflow: visible; background: white; }
+            #sidebar, #header-bar, .sheet-controls, .resize-handle, .rotate-handle, .delete-handle, .img-overlay-btn { display: none !important; }
+            #workspace { padding: 0; overflow: visible; display: block; }
+            .sheet {
+                margin: 0;
+                box-shadow: none;
+                page-break-after: always;
+                border: none;
+            }
+            .free-item { border: none !important; }
+            .drop-zone { border: none; background: transparent; }
+            /* Ocultar placeholders en impresión */
+            .img-placeholder { opacity: 0.1; }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Barra Superior -->
+    <div id="header-bar" class="bg-white border-b px-4 py-3 flex justify-between items-center shadow-sm z-30">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <span class="text-blue-600">📄</span> Compaginador
+            </h1>
+            <span id="save-status" class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-500 font-medium transition-all">Listo</span>
+        </div>
+        
+        <div class="flex gap-3">
+            <button onclick="resetProject()" class="text-red-500 hover:text-red-700 text-sm font-bold px-3 py-2 transition flex items-center gap-1">
+                🗑️ Borrar Todo
+            </button>
+            <div class="h-8 w-px bg-gray-300 mx-1"></div>
+            <button onclick="addSheet()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm flex items-center gap-2">
+                ➕ Agregar Hoja
+            </button>
+            <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm flex items-center gap-2">
+                🖨️ Guardar PDF
+            </button>
+        </div>
+    </div>
+
+    <div id="main-container">
+        <!-- Sidebar -->
+        <aside id="sidebar">
+            <div class="p-4 border-b border-gray-700 bg-gray-900">
+                <label class="block w-full cursor-pointer bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded-lg transition text-sm font-medium mb-2 shadow-lg">
+                    📂 Cargar Imágenes
+                    <input type="file" id="imageInput" multiple accept="image/*" class="hidden">
+                </label>
+                <button onclick="addSeparator()" class="block w-full cursor-pointer bg-gray-700 hover:bg-gray-600 text-gray-300 text-center py-2 rounded-lg border border-dashed border-gray-500 transition text-xs font-medium">
+                    --- Agregar Separador ---
+                </button>
+                <p class="text-[10px] text-gray-400 mt-2 text-center">Si recargas la página, vuelve a cargar las imágenes para restaurarlas.</p>
+            </div>
+            <div id="gallery"></div>
+        </aside>
+
+        <!-- Workspace -->
+        <main id="workspace"></main>
+    </div>
+
+    <!-- Modal Editor -->
+    <div id="editor-modal">
+        <div class="w-full max-w-5xl mx-auto flex flex-col h-full">
+            <div class="flex justify-between items-center mb-4 text-white">
+                <h2 class="text-xl font-bold">Editar Imagen Original</h2>
+                <button onclick="closeEditor()" class="text-gray-400 hover:text-white">✕ Cerrar</button>
+            </div>
+            <div class="cropper-container-wrapper relative">
+                <img id="editor-image" style="max-width: 100%; display: block;">
+            </div>
+            <div class="bg-gray-800 p-4 mt-4 rounded-lg flex flex-wrap gap-4 items-center justify-between shadow-lg">
+                <div class="flex gap-2">
+                    <button onclick="cropper.rotate(-90)" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded">↺</button>
+                    <button onclick="cropper.rotate(90)" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded">↻</button>
+                    <button onclick="cropper.scaleX(currScaleX *= -1)" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded">↔</button>
+                </div>
+                <div class="flex items-center gap-2 bg-gray-900 px-3 py-2 rounded border border-gray-700">
+                    <input type="checkbox" id="bw-toggle" class="w-4 h-4">
+                    <label for="bw-toggle" class="text-white text-sm cursor-pointer select-none">Blanco y Negro</label>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="closeEditor()" class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded">Cancelar</button>
+                    <button onclick="saveEdit()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-bold">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const layouts = {
+            1: { class: 'grid-cols-1 grid-rows-1', label: '1', icon: '⬜' },
+            2: { class: 'grid-cols-1 grid-rows-2', label: '2', icon: '日' },
+            3: { class: 'grid-cols-1 grid-rows-3', label: '3', icon: '目' },
+            4: { class: 'grid-cols-2 grid-rows-2', label: '4', icon: '田' },
+            6: { class: 'grid-2x3', label: '6', icon: '▦' },
+            9: { class: 'grid-3x3', label: '9', icon: '▩' },
+            'free': { class: 'freeform', label: 'Libre', icon: '✂️' }
+        };
+
+        const imageInput = document.getElementById('imageInput');
+        const gallery = document.getElementById('gallery');
+        const workspace = document.getElementById('workspace');
+        const saveStatus = document.getElementById('save-status');
+        
+        // Memoria volátil para imágenes (fileId -> blobUrl)
+        const imageCache = {};
+
+        let cropper = null;
+        let currentTargetImg = null;
+        let currScaleX = 1;
+        
+        // --- Persistence Logic ---
+        const LS_KEY = 'pdf_composer_v2_structure';
+        let saveTimeout;
+
+        // Generar ID único para el archivo basado en nombre y tamaño
+        function generateFileId(file) {
+            return `${file.name}-${file.size}`;
+        }
+
+        function triggerSave() {
+            clearTimeout(saveTimeout);
+            saveStatus.innerText = 'Guardando...';
+            saveStatus.className = 'text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-600 font-bold';
+            saveTimeout = setTimeout(saveData, 1000);
+        }
+
+        function saveData() {
+            try {
+                // 1. Serialize Gallery (Solo referencias)
+                const galleryData = [];
+                Array.from(gallery.children).forEach(child => {
+                    if (child.classList.contains('gallery-separator')) {
+                        galleryData.push({ type: 'separator' });
+                    } else {
+                        // Es item (imagen o placeholder)
+                        const fileId = child.dataset.fileId;
+                        const filename = child.dataset.filename;
+                        if (fileId) {
+                            galleryData.push({ type: 'image', fileId, filename });
+                        }
+                    }
+                });
+
+                // 2. Serialize Sheets
+                const sheetsData = [];
+                document.querySelectorAll('.sheet-wrapper').forEach(wrapper => {
+                    const sheet = wrapper.querySelector('.sheet');
+                    const layout = sheet.dataset.layout;
+                    const sheetObj = { layout: layout, slots: [], freeItems: [] };
+
+                    if (layout === 'free') {
+                        sheet.querySelectorAll('.free-item').forEach(item => {
+                            // Buscar img o placeholder dentro
+                            const content = item.querySelector('img') || item.querySelector('.img-placeholder');
+                            const fileId = content ? content.dataset.fileId : null;
+                            const filename = content ? content.dataset.filename : null;
+
+                            if(fileId) {
+                                sheetObj.freeItems.push({
+                                    fileId: fileId,
+                                    filename: filename,
+                                    left: item.style.left,
+                                    top: item.style.top,
+                                    width: item.style.width,
+                                    height: item.style.height,
+                                    transform: item.style.transform,
+                                    angle: item.dataset.angle || 0
+                                });
+                            }
+                        });
+                    } else {
+                        sheet.querySelectorAll('.drop-zone').forEach(zone => {
+                            const img = zone.querySelector('img');
+                            const ph = zone.querySelector('.img-placeholder');
+                            const content = img || ph;
+                            
+                            sheetObj.slots.push(content ? { 
+                                fileId: content.dataset.fileId,
+                                filename: content.dataset.filename 
+                            } : null);
+                        });
+                    }
+                    sheetsData.push(sheetObj);
+                });
+
+                const data = { gallery: galleryData, sheets: sheetsData };
+                localStorage.setItem(LS_KEY, JSON.stringify(data));
+                
+                saveStatus.innerText = 'Guardado ✓';
+                saveStatus.className = 'text-xs px-2 py-1 rounded bg-green-100 text-green-600 font-bold';
+            } catch (e) {
+                console.error(e);
+                saveStatus.innerText = '⚠️ Error guardado';
+            }
+        }
+
+        function loadData() {
+            try {
+                const json = localStorage.getItem(LS_KEY);
+                if (!json) {
+                    addSheet(false);
+                    return;
+                }
+
+                const data = JSON.parse(json);
+
+                // Restore Gallery
+                gallery.innerHTML = '';
+                if (data.gallery) {
+                    data.gallery.forEach(item => {
+                        if (item.type === 'separator') addSeparator(false);
+                        else if (item.type === 'image') {
+                            // Intentar renderizar imagen si está en cache, sino placeholder
+                            renderGalleryItem(item.fileId, item.filename, false);
+                        }
+                    });
+                }
+
+                // Restore Sheets
+                workspace.innerHTML = '';
+                if (data.sheets && data.sheets.length > 0) {
+                    data.sheets.forEach(sheetData => {
+                        restoreSheet(sheetData);
+                    });
+                } else {
+                    addSheet(false);
+                }
+
+                // Actualizar indicadores después de cargar
+                updateGalleryIndicators();
+
+            } catch (e) {
+                console.error("Error loading data", e);
+                addSheet(false);
+            }
+        }
+
+        function resetProject() {
+            if (confirm("¿Estás seguro de que quieres borrar todo y empezar de cero?")) {
+                localStorage.removeItem(LS_KEY);
+                location.reload();
+            }
+        }
+
+        // --- Carga Imágenes y Rehidratación ---
+        imageInput.addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            let newImagesCount = 0;
+
+            files.forEach(file => {
+                const fileId = generateFileId(file);
+                // Guardar en memoria
+                imageCache[fileId] = URL.createObjectURL(file);
+
+                // Verificar si ya existe en la galería (placeholder o imagen)
+                const existingInGallery = gallery.querySelector(`[data-file-id="${fileId}"]`);
+                
+                if (!existingInGallery) {
+                    // Si es nueva, añadir a galería
+                    renderGalleryItem(fileId, file.name, true);
+                    newImagesCount++;
+                }
+            });
+
+            // "Rehidratar" todas las imágenes rotas o placeholders en el documento
+            hydrateImages();
+            
+            if(newImagesCount > 0) triggerSave();
+            this.value = '';
+        });
+
+        // Buscar placeholders y reemplazarlos por imágenes reales si ya están en memoria
+        function hydrateImages() {
+            // 1. Galería
+            const galleryItems = document.querySelectorAll('#gallery .gallery-item');
+            galleryItems.forEach(item => {
+                // Check if this item is a placeholder (has .img-placeholder child)
+                const placeholder = item.querySelector('.img-placeholder');
+                if (placeholder) {
+                    const fileId = item.dataset.fileId;
+                    if (imageCache[fileId]) {
+                        // Create new full element
+                        const newImgItem = createGalleryImageElement(fileId, imageCache[fileId], item.dataset.filename);
+                        // Replace the old placeholder item container with the new image item container
+                        item.replaceWith(newImgItem);
+                    }
+                }
+            });
+
+            // 2. Hojas (Grid y Freeform)
+            // Scope to workspace to avoid affecting gallery if selectors overlap
+            const sheetPlaceholders = document.querySelectorAll('#workspace .img-placeholder');
+            sheetPlaceholders.forEach(el => {
+                const fileId = el.dataset.fileId;
+                if (imageCache[fileId]) {
+                    const img = document.createElement('img');
+                    img.src = imageCache[fileId];
+                    img.dataset.fileId = fileId;
+                    img.dataset.filename = el.dataset.filename;
+                    // Copy style/classes if needed, though usually standard
+                    
+                    el.replaceWith(img);
+                }
+            });
+            
+            // Actualizar indicadores después de rehidratar
+            updateGalleryIndicators();
+        }
+
+        // --- GESTIÓN DE INDICADORES DE USO ---
+        function updateGalleryIndicators() {
+            // 1. Recolectar IDs usados en el workspace
+            const usedIds = new Set();
+            document.querySelectorAll('#workspace [data-file-id]').forEach(el => {
+                usedIds.add(el.dataset.fileId);
+            });
+
+            // 2. Actualizar Galería
+            document.querySelectorAll('#gallery .gallery-item[data-file-id]').forEach(item => {
+                const id = item.dataset.fileId;
+                if (usedIds.has(id)) {
+                    item.classList.add('used');
+                    // Chequear si ya tiene el badge, sino agregarlo
+                    if(!item.querySelector('.used-badge')) {
+                        const badge = document.createElement('div');
+                        badge.className = 'used-badge';
+                        badge.innerText = '✓';
+                        item.appendChild(badge);
+                    }
+                } else {
+                    item.classList.remove('used');
+                    const badge = item.querySelector('.used-badge');
+                    if(badge) badge.remove();
+                }
+            });
+        }
+
+        function createGalleryImageElement(fileId, src, filename) {
+            const container = document.createElement('div');
+            container.className = 'gallery-item';
+            container.dataset.fileId = fileId;
+            container.dataset.filename = filename;
+            
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = 'thumb';
+            img.draggable = true;
+            img.dataset.fileId = fileId; // redundancy for drag logic
+            img.dataset.filename = filename;
+            img.title = filename;
+            
+            img.addEventListener('dragstart', (e) => {
+                e.dataTransfer.effectAllowed = 'copyMove';
+                // Enviamos metadata JSON porque URI ya no es suficiente si está rota
+                const payload = JSON.stringify({ fileId, filename });
+                e.dataTransfer.setData('application/json', payload);
+                e.dataTransfer.setData('source', 'gallery');
+            });
+            
+            container.appendChild(img);
+            return container;
+        }
+
+        function createPlaceholderElement(fileId, filename, isGallery = false) {
+            // Si es galería, necesitamos un wrapper para el badge
+            if(isGallery) {
+                const container = document.createElement('div');
+                container.className = 'gallery-item';
+                container.dataset.fileId = fileId;
+                container.dataset.filename = filename;
+
+                const div = document.createElement('div');
+                div.className = 'img-placeholder thumb';
+                div.draggable = true;
+                div.innerHTML = `<span>📂<br>${filename}<br><span class="text-[9px]">Falta archivo</span></span>`;
+                
+                div.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'copyMove';
+                    const payload = JSON.stringify({ fileId, filename });
+                    e.dataTransfer.setData('application/json', payload);
+                    e.dataTransfer.setData('source', 'gallery');
+                });
+
+                container.appendChild(div);
+                return container;
+            } else {
+                // Si es para la hoja, el div directo
+                const div = document.createElement('div');
+                div.className = 'img-placeholder';
+                div.dataset.fileId = fileId;
+                div.dataset.filename = filename;
+                div.innerHTML = `<span>📂<br>${filename}<br><span class="text-[9px]">Falta archivo</span></span>`;
+                return div;
+            }
+        }
+
+        function renderGalleryItem(fileId, filename, save = true) {
+            let el;
+            if (imageCache[fileId]) {
+                el = createGalleryImageElement(fileId, imageCache[fileId], filename);
+            } else {
+                el = createPlaceholderElement(fileId, filename, true);
+            }
+            gallery.appendChild(el);
+            if(save) triggerSave();
+        }
+
+        function addSeparator(save = true) {
+            const div = document.createElement('div');
+            div.className = 'gallery-separator';
+            div.draggable = true;
+            const btn = document.createElement('span');
+            btn.className = 'remove-sep';
+            btn.innerHTML = '✕';
+            btn.onclick = () => { div.remove(); triggerSave(); };
+            div.appendChild(btn);
+            
+            div.addEventListener('dragstart', (e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('source', 'gallery-sep');
+            });
+            gallery.appendChild(div);
+            gallery.scrollTop = gallery.scrollHeight;
+            if(save) triggerSave();
+        }
+
+        // --- Gestión Hojas ---
+        
+        function addSheet(save = true) {
+            createSheetDOM(1, null, null);
+            if(save) triggerSave();
+        }
+
+        function restoreSheet(data) {
+            createSheetDOM(data.layout, data.slots, data.freeItems);
+        }
+
+        function createSheetDOM(layoutKey, slotsData, freeItemsData) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sheet-wrapper';
+
+            const controls = document.createElement('div');
+            controls.className = 'sheet-controls';
+            
+            const label = document.createElement('span');
+            label.className = 'layout-label font-bold text-sm text-gray-600 mr-auto';
+            label.innerText = 'Diseño:';
+            controls.appendChild(label);
+            
+            Object.keys(layouts).forEach(key => {
+                const btn = document.createElement('button');
+                btn.className = `layout-btn ${key == layoutKey ? 'active' : ''}`;
+                btn.innerHTML = layouts[key].icon;
+                btn.title = layouts[key].label;
+                btn.onclick = () => changeLayout(sheet, key, controls);
+                controls.appendChild(btn);
+            });
+            
+            const delBtn = document.createElement('button');
+            delBtn.className = 'layout-btn text-red-500 ml-2 border-red-200';
+            delBtn.innerHTML = '🗑️';
+            delBtn.onclick = () => { if(confirm('¿Eliminar hoja?')) { wrapper.remove(); updateGalleryIndicators(); triggerSave(); } };
+            controls.appendChild(delBtn);
+
+            const sheet = document.createElement('div');
+            sheet.className = 'sheet ' + layouts[layoutKey].class;
+            sheet.dataset.layout = layoutKey;
+            
+            setupSheetDrop(sheet);
+            
+            if (layoutKey === 'free') {
+                if (freeItemsData) {
+                    freeItemsData.forEach(item => {
+                        createFreeItem(sheet, item.fileId, item.filename, parseFloat(item.left), parseFloat(item.top), parseFloat(item.width), parseFloat(item.height), item.angle);
+                    });
+                }
+            } else {
+                // Grid
+                const count = parseInt(layoutKey) || 1;
+                updateSlots(sheet, count);
+                if (slotsData) {
+                    const zones = sheet.querySelectorAll('.drop-zone');
+                    slotsData.forEach((slotData, idx) => {
+                        if (slotData && zones[idx]) {
+                            setImageInSlot(zones[idx], slotData.fileId, slotData.filename);
+                        }
+                    });
+                }
+            }
+
+            wrapper.appendChild(controls);
+            wrapper.appendChild(sheet);
+            workspace.appendChild(wrapper);
+            if(!slotsData && !freeItemsData) wrapper.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function changeLayout(sheet, key, controls) {
+            controls.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+            Array.from(controls.children).forEach(child => {
+                if(child.innerHTML === layouts[key].icon) child.classList.add('active');
+            });
+
+            const oldLayout = sheet.dataset.layout;
+            sheet.dataset.layout = key;
+            sheet.className = 'sheet ' + layouts[key].class;
+
+            // Recolectar datos actuales antes de cambiar
+            const itemsToMove = []; // {fileId, filename}
+
+            if (oldLayout === 'free') {
+                sheet.querySelectorAll('.free-item').forEach(item => {
+                   const c = item.querySelector('img') || item.querySelector('.img-placeholder');
+                   if(c) itemsToMove.push({ fileId: c.dataset.fileId, filename: c.dataset.filename });
+                });
+            } else {
+                sheet.querySelectorAll('.drop-zone').forEach(zone => {
+                    const c = zone.querySelector('img') || zone.querySelector('.img-placeholder');
+                    if(c) itemsToMove.push({ fileId: c.dataset.fileId, filename: c.dataset.filename });
+                });
+            }
+
+            sheet.innerHTML = ''; // Limpiar
+
+            if (key === 'free') {
+                itemsToMove.forEach((item, idx) => {
+                    const x = 50 + (idx * 20) % 400;
+                    const y = 50 + (idx * 20) % 500;
+                    createFreeItem(sheet, item.fileId, item.filename, x, y, 200, 200, 0); 
+                });
+            } else {
+                const count = parseInt(key);
+                updateSlots(sheet, count);
+                const zones = sheet.querySelectorAll('.drop-zone');
+                itemsToMove.slice(0, count).forEach((item, i) => {
+                    setImageInSlot(zones[i], item.fileId, item.filename);
+                });
+            }
+            updateGalleryIndicators();
+            triggerSave();
+        }
+
+        // --- Lógica Grid ---
+        function updateSlots(sheet, count) {
+            for(let i=0; i<count; i++) {
+                sheet.appendChild(createSlot());
+            }
+        }
+
+        function createSlot() {
+            const slot = document.createElement('div');
+            slot.className = 'drop-zone';
+            slot.innerHTML = '<span class="text-gray-300 text-4xl pointer-events-none">+</span>';
+
+            slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('drag-over'); });
+            slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+            slot.addEventListener('drop', e => {
+                e.preventDefault();
+                slot.classList.remove('drag-over');
+                try {
+                    const raw = e.dataTransfer.getData('application/json');
+                    if(raw && sheetIsGrid(slot.parentNode)) {
+                        const data = JSON.parse(raw);
+                        setImageInSlot(slot, data.fileId, data.filename);
+                        triggerSave();
+                    }
+                } catch(err) {}
+            });
+            return slot;
+        }
+
+        function sheetIsGrid(sheet) {
+            return sheet.dataset.layout !== 'free';
+        }
+
+        function setImageInSlot(slot, fileId, filename) {
+            slot.innerHTML = '';
+            
+            let content;
+            if (imageCache[fileId]) {
+                content = document.createElement('img');
+                content.src = imageCache[fileId];
+            } else {
+                content = createPlaceholderElement(fileId, filename, false);
+            }
+            content.dataset.fileId = fileId;
+            content.dataset.filename = filename;
+
+            const del = document.createElement('button');
+            del.className = 'img-overlay-btn btn-delete';
+            del.innerHTML = '✕';
+            del.onclick = (e) => { 
+                e.stopPropagation(); 
+                slot.innerHTML = '<span class="text-gray-300 text-4xl pointer-events-none">+</span>'; 
+                updateGalleryIndicators();
+                triggerSave();
+            };
+
+            const edit = document.createElement('button');
+            edit.className = 'img-overlay-btn btn-edit';
+            edit.innerHTML = '✎';
+            // Solo editar si es imagen real
+            if (content.tagName === 'IMG') {
+                edit.onclick = (e) => { e.stopPropagation(); openEditor(content); };
+            } else {
+                edit.style.display = 'none';
+            }
+
+            slot.appendChild(content);
+            slot.appendChild(del);
+            slot.appendChild(edit);
+            updateGalleryIndicators();
+        }
+
+        // --- Lógica FREEFORM ---
+        let activeFreeItem = null;
+        let isDragging = false, isResizing = false, isRotating = false;
+        let startX, startY, startLeft, startTop, startWidth, startHeight, startAngle, centerX, centerY;
+
+        function setupSheetDrop(sheet) {
+            sheet.addEventListener('dragover', e => {
+                if (sheet.dataset.layout === 'free') {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                }
+            });
+            sheet.addEventListener('drop', e => {
+                if (sheet.dataset.layout === 'free') {
+                    e.preventDefault();
+                    try {
+                        const raw = e.dataTransfer.getData('application/json');
+                        if(raw) {
+                            const data = JSON.parse(raw);
+                            const rect = sheet.getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const y = e.clientY - rect.top;
+                            createFreeItem(sheet, data.fileId, data.filename, x - 100, y - 100, 200, 200, 0); 
+                            triggerSave();
+                        }
+                    } catch(err) {}
+                }
+            });
+            sheet.addEventListener('mousedown', (e) => { if(e.target === sheet) deselectAll(); });
+        }
+
+        function createFreeItem(sheet, fileId, filename, x, y, w, h, angle = 0) {
+            const item = document.createElement('div');
+            item.className = 'free-item';
+            item.style.left = x + 'px';
+            item.style.top = y + 'px';
+            item.style.width = w + 'px';
+            item.style.height = (h || w) + 'px';
+            item.style.transform = `rotate(${angle}deg)`;
+            item.dataset.angle = angle;
+
+            let content;
+            if (imageCache[fileId]) {
+                content = document.createElement('img');
+                content.src = imageCache[fileId];
+            } else {
+                content = createPlaceholderElement(fileId, filename, false);
+            }
+            content.dataset.fileId = fileId;
+            content.dataset.filename = filename;
+            
+            item.appendChild(content);
+
+            const resizer = document.createElement('div'); resizer.className = 'resize-handle'; item.appendChild(resizer);
+            const rotator = document.createElement('div'); rotator.className = 'rotate-handle'; item.appendChild(rotator);
+            const deleter = document.createElement('div'); deleter.className = 'delete-handle'; deleter.innerHTML = '✕';
+            deleter.onclick = (e) => { e.stopPropagation(); item.remove(); updateGalleryIndicators(); triggerSave(); };
+            item.appendChild(deleter);
+
+            item.addEventListener('mousedown', (e) => { if(e.target === item || e.target === content) { selectItem(item); initDrag(e, item); } });
+            resizer.addEventListener('mousedown', (e) => { e.stopPropagation(); initResize(e, item); });
+            rotator.addEventListener('mousedown', (e) => { e.stopPropagation(); initRotate(e, item); });
+
+            sheet.appendChild(item);
+            updateGalleryIndicators();
+        }
+
+        function selectItem(item) {
+            deselectAll();
+            item.classList.add('selected');
+            activeFreeItem = item;
+        }
+        function deselectAll() {
+            document.querySelectorAll('.free-item.selected').forEach(el => el.classList.remove('selected'));
+            activeFreeItem = null;
+        }
+
+        function initDrag(e, item) {
+            isDragging = true;
+            startX = e.clientX; startY = e.clientY;
+            startLeft = item.offsetLeft; startTop = item.offsetTop;
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopInteraction);
+        }
+        function onDrag(e) {
+            if(!isDragging || !activeFreeItem) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            activeFreeItem.style.left = (startLeft + dx) + 'px';
+            activeFreeItem.style.top = (startTop + dy) + 'px';
+        }
+        function initResize(e, item) {
+            isResizing = true;
+            startX = e.clientX; startY = e.clientY;
+            startWidth = item.offsetWidth; startHeight = item.offsetHeight;
+            document.addEventListener('mousemove', onResize);
+            document.addEventListener('mouseup', stopInteraction);
+        }
+        function onResize(e) {
+            if(!isResizing || !activeFreeItem) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            activeFreeItem.style.width = Math.max(50, startWidth + dx) + 'px';
+            activeFreeItem.style.height = Math.max(50, startHeight + dy) + 'px';
+        }
+        function initRotate(e, item) {
+            isRotating = true;
+            const rect = item.getBoundingClientRect();
+            centerX = rect.left + rect.width / 2;
+            centerY = rect.top + rect.height / 2;
+            startAngle = parseFloat(item.dataset.angle || 0);
+            const initialMouseAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+            item.dataset.initialMouseAngle = initialMouseAngle;
+            document.addEventListener('mousemove', onRotate);
+            document.addEventListener('mouseup', stopInteraction);
+        }
+        function onRotate(e) {
+            if(!isRotating || !activeFreeItem) return;
+            const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+            const initialMouseAngle = parseFloat(activeFreeItem.dataset.initialMouseAngle);
+            let deg = startAngle + (angle - initialMouseAngle) * (180 / Math.PI);
+            activeFreeItem.style.transform = `rotate(${deg}deg)`;
+            activeFreeItem.dataset.angle = deg;
+        }
+        function stopInteraction() {
+            if(isDragging || isResizing || isRotating) triggerSave();
+            isDragging = false; isResizing = false; isRotating = false;
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mousemove', onResize);
+            document.removeEventListener('mousemove', onRotate);
+            document.removeEventListener('mouseup', stopInteraction);
+        }
+
+        // --- Editor ---
+        function openEditor(img) {
+            currentTargetImg = img;
+            const modal = document.getElementById('editor-modal');
+            const editorImage = document.getElementById('editor-image');
+            editorImage.src = img.src;
+            modal.style.display = 'flex';
+            if (cropper) cropper.destroy();
+            cropper = new Cropper(editorImage, { viewMode: 1 });
+        }
+        function closeEditor() {
+            document.getElementById('editor-modal').style.display = 'none';
+            if (cropper) cropper.destroy();
+            currentTargetImg = null;
+        }
+        function saveEdit() {
+            if (!cropper || !currentTargetImg) return;
+            const canvas = cropper.getCroppedCanvas();
+            if(!canvas) return;
+            
+            const isBW = document.getElementById('bw-toggle').checked;
+            if(isBW) {
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+                const data = imgData.data;
+                for(let i=0; i<data.length; i+=4) {
+                    const avg = (data[i] + data[i+1] + data[i+2])/3;
+                    data[i] = avg; data[i+1] = avg; data[i+2] = avg;
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
+            
+            // Actualizar blob en cache
+            canvas.toBlob((blob) => {
+                const newUrl = URL.createObjectURL(blob);
+                const fileId = currentTargetImg.dataset.fileId;
+                imageCache[fileId] = newUrl;
+                currentTargetImg.src = newUrl;
+                
+                // Actualizar otras instancias de la misma imagen
+                document.querySelectorAll(`img[data-file-id="${fileId}"]`).forEach(el => {
+                   el.src = newUrl; 
+                });
+                
+                triggerSave(); 
+                closeEditor();
+            }, 'image/jpeg', 0.95);
+        }
+
+        // Init load
+        window.onload = () => loadData();
+
+        gallery.addEventListener('dragover', e => { e.preventDefault(); });
+        
+    </script>
+</body>
+</html>

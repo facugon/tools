@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asteroides: Progresión Épica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            color: white;
+            font-size: 20px;
+            text-shadow: 0 0 5px #fff;
+            z-index: 10;
+        }
+
+        .center-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            pointer-events: auto;
+            z-index: 20;
+        }
+        
+        #warning-msg {
+            position: absolute;
+            top: 20%;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 40px;
+            font-weight: bold;
+            color: red;
+            text-shadow: 0 0 10px red;
+            display: none;
+            z-index: 15;
+            letter-spacing: 5px;
+        }
+
+        .btn {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+            padding: 10px 20px;
+            font-family: inherit;
+            font-size: 1.2rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: white;
+            color: black;
+            box-shadow: 0 0 15px white;
+        }
+
+        .controls-mobile {
+            pointer-events: auto;
+            display: none;
+            width: 100%;
+            height: 160px;
+            padding: 20px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 40px;
+            z-index: 10;
+        }
+
+        .d-pad { display: flex; gap: 15px; }
+        .action-btn { display: flex; gap: 20px; }
+
+        .touch-btn {
+            width: 60px;
+            height: 60px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        .touch-btn:active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.95);
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            .controls-mobile { display: flex; }
+        }
+        
+        #powerup-status {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            color: cyan;
+            font-size: 16px;
+            text-align: left;
+            line-height: 1.5;
+            white-space: pre; /* Mantiene el formato */
+        }
+        
+        /* Indicador de Gamepad */
+        #gamepad-icon {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 24px;
+            color: lime;
+            display: none;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div id="score">PUNTOS: 0</div>
+            <div>
+                <span id="level-display" class="mr-4 text-yellow-400">NIVEL 1</span>
+                <span id="lives">VIDAS: 3</span>
+            </div>
+        </div>
+        
+        <div id="warning-msg">⚠️ ALARMA ⚠️</div>
+        <div id="powerup-status"></div>
+        <div id="gamepad-icon">🎮 Control Conectado</div>
+
+        <div id="start-screen" class="center-msg">
+            <h1 class="text-4xl mb-4 font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500" style="-webkit-text-stroke: 1px white;">ASTEROIDES</h1>
+            <p class="mb-2 text-gray-300">Teclado o Gamepad Bluetooth</p>
+            <p class="mb-6 text-sm text-yellow-300">Nivel 20: Sobrevive a la Tormenta</p>
+            <button class="btn" onclick="startGame()">DESPEGAR</button>
+        </div>
+
+        <div id="game-over-screen" class="center-msg hidden">
+            <h1 class="text-4xl mb-2 text-red-500 font-bold">MISION FALLIDA</h1>
+            <p id="final-score" class="mb-6 text-xl">Puntaje Final: 0</p>
+            <button class="btn" onclick="resetGame()">REINTENTAR</button>
+        </div>
+
+        <div class="controls-mobile">
+            <div class="d-pad">
+                <div class="touch-btn" id="btn-left">←</div>
+                <div class="touch-btn" id="btn-thrust">▲</div>
+                <div class="touch-btn" id="btn-right">→</div>
+            </div>
+            <div class="action-btn">
+                <div class="touch-btn" id="btn-missile" style="border-color: #ff4444; color: #ff4444; font-size: 14px;">MISIL</div>
+                <div class="touch-btn" id="btn-fire" style="border-color: #00ff00; color: #00ff00;">●</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    /**
+     * CONFIGURACIÓN
+     */
+    const FPS = 60; 
+    const FRICTION = 0.7; 
+    const SHIP_SIZE = 30; 
+    const SHIP_THRUST = 1.5; 
+    const SHIP_MAX_SPEED = 12; 
+    const TURN_SPEED = 90;   
+    const LASER_MAX = 40; 
+    const LASER_SPD = 500; 
+    const LASER_DIST = 0.6; 
+    const SAT_LASER_DIST = 0.3;
+    const FIRE_RATE = 15; 
+    const BEAM_LIFE = 60;
+    
+    // Enemigos & Asteroides
+    const ROIDS_NUM = 3; 
+    const ROIDS_SIZE = 100; 
+    const ROIDS_HUGE_SIZE = 160; 
+    const ROIDS_SPD = 50; 
+    const ROIDS_VERT = 10; 
+    const ROIDS_JAG = 0.3; 
+    const ALIEN_SPD = 120; 
+    const TURRET_RANGE = 300;
+    const TURRET_RELOAD = 120; 
+    const ENEMY_LASER_SPD = 200;
+
+    // Sistema de Daño
+    const DMG_LASER = 1; 
+    const DMG_BEAM = 0.3; 
+    
+    // HP Base
+    const HP_SMALL = 1;  
+    const HP_MED = 4;
+    const HP_LARGE = 10; 
+    const HP_HUGE = 20;  
+    const HP_BOSS_BASE = 300; 
+    const HP_ALIEN = 2;
+    const HP_TURRET = 8;
+    
+    // Power Ups
+    const PU_CHANCE = 0.25; 
+    const PU_LIFE = 900; 
+    const MAX_SATELLITES = 4; 
+    const SAT_ORBIT_SPEED = 0.03;
+    const MISSILE_BLAST_RADIUS = 200;
+    const MISSILE_SPD = 250; 
+    
+    // Configuración Imán y Escudo
+    const MAGNET_BASE_RANGE = 90;  
+    const MAGNET_MAX_RANGE = 150;  
+    const MAGNET_LEVELS = 3;
+    const MAGNET_UPGRADE_STEP = (MAGNET_MAX_RANGE - MAGNET_BASE_RANGE) / (MAGNET_LEVELS - 1); 
+    
+    const SHIELD_MAX_HITS = 3; 
+    
+    // Tipos de Entidad
+    const TYPE = {
+        ASTEROID: 0,
+        BOSS: 1,
+        ALIEN: 2,
+        TURRET: 3,
+        COMET: 4
+    };
+
+    const PU_TYPE = { SPREAD: 0, SATELLITE: 1, MISSILE: 2, LASER: 3, MAGNET: 4, SHIELD: 5 };
+
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let level, lives, score, roids, enemyLasers, ship;
+    let particles = [];
+    let powerups = [];
+    let explosions = [];
+    
+    // Estado del Juego
+    let gameState = {
+        bossActive: false,
+        warningTimer: 0,
+        spawnTimer: 0,
+        minionTimer: 0,
+        meteorShower: false,
+        isChaosShower: false, 
+        showerDirection: 0,   
+        meteorTimer: 0,
+        meteorsLeft: 0,
+        maxMeteors: 0,
+        alienTimer: 0,
+        canRestart: true 
+    };
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // GAMEPAD CONNECTION EVENTS
+    window.addEventListener("gamepadconnected", (e) => {
+        document.getElementById('gamepad-icon').style.display = 'block';
+    });
+
+    window.addEventListener("gamepaddisconnected", (e) => {
+        document.getElementById('gamepad-icon').style.display = 'none';
+    });
+
+    // Inputs
+    const keys = { left: false, right: false, up: false, space: false, missile: false };
+    document.addEventListener("keydown", keyDown);
+    document.addEventListener("keyup", keyUp);
+
+    function keyDown(ev) {
+        if(!ship || ship.dead) return;
+        switch(ev.keyCode) {
+            case 32: keys.space = true; break; 
+            case 90: case 16: shootMissile(); break;
+            case 37: keys.left = true; break; 
+            case 38: keys.up = true; break; 
+            case 39: keys.right = true; break; 
+        }
+    }
+
+    function keyUp(ev) {
+        if(!ship || ship.dead) return;
+        switch(ev.keyCode) {
+            case 32: keys.space = false; break; 
+            case 37: keys.left = false; break;
+            case 38: keys.up = false; break;
+            case 39: keys.right = false; break;
+        }
+    }
+
+    const setupTouch = (id, key, isClick = false) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        if(isClick) el.addEventListener('touchstart', (e) => { e.preventDefault(); if(key === 'missile') shootMissile(); });
+        else {
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+            el.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+        }
+    };
+    setupTouch('btn-left', 'left');
+    setupTouch('btn-right', 'right');
+    setupTouch('btn-thrust', 'up');
+    setupTouch('btn-fire', 'space');
+    setupTouch('btn-missile', 'missile', true);
+
+    /**
+     * LÓGICA DE JUEGO
+     */
+
+    function newShip() {
+        return {
+            x: canvas.width / 2, y: canvas.height / 2, a: 90 / 180 * Math.PI, r: SHIP_SIZE / 2,
+            blinkNum: Math.ceil(150 / 30), blinkTime: Math.ceil(30), dead: false, explodeTime: 0,
+            lasers: [], beams: [], thrusting: false, thrust: { x: 0, y: 0 },
+            reloadTime: 0, spreadAmmo: 0, satellites: [], missileAmmo: 3, laserAmmo: 0,
+            magnetRange: MAGNET_BASE_RANGE, 
+            shield: 0,
+            gpMissileLock: false 
+        };
+    }
+
+    function recalcSatellites() {
+        const count = ship.satellites.length;
+        if(count === 0) return;
+        ship.satellites.forEach((sat, i) => { sat.angle = (Math.PI * 2 / count) * i; });
+    }
+
+    function createPowerUp(x, y) {
+        powerups.push({
+            x: x, y: y, xv: (Math.random() - 0.5) * 30 / FPS, yv: (Math.random() - 0.5) * 30 / FPS,
+            type: Math.floor(Math.random() * 6), 
+            r: 15, age: 0, life: PU_LIFE 
+        });
+    }
+
+    function shoot() {
+        if (ship.reloadTime <= 0 && !ship.dead) {
+            if (ship.laserAmmo > 0) fireBeam();
+            else { ship.reloadTime = FIRE_RATE; fireProjectile(); }
+        }
+    }
+
+    function fireProjectile() {
+         if (ship.lasers.length < LASER_MAX) {
+            const spawnLaser = (x, y, a, isSat = false) => {
+                 ship.lasers.push({
+                    x: x, y: y, xv: LASER_SPD * Math.cos(a) / FPS, yv: -LASER_SPD * Math.sin(a) / FPS,
+                    dist: 0, maxDist: isSat ? canvas.width * SAT_LASER_DIST : canvas.width * LASER_DIST,
+                    isMissile: false, isSatelliteShot: isSat
+                });
+            };
+            spawnLaser(ship.x + 4/3 * ship.r * Math.cos(ship.a), ship.y - 4/3 * ship.r * Math.sin(ship.a), ship.a);
+            if (ship.spreadAmmo > 0) {
+                spawnLaser(ship.x, ship.y, ship.a + 0.25);
+                spawnLaser(ship.x, ship.y, ship.a - 0.25);
+                ship.spreadAmmo--; updateHud();
+            }
+            ship.satellites.forEach(sat => { spawnLaser(sat.x, sat.y, ship.a, true); });
+         }
+    }
+
+    function fireBeam() {
+        ship.reloadTime = BEAM_LIFE + FIRE_RATE; 
+        ship.laserAmmo--; updateHud();
+        const spawnBeam = (angleOffset) => {
+            ship.beams.push({ angleOffset: angleOffset, life: BEAM_LIFE, maxLife: BEAM_LIFE });
+        };
+        spawnBeam(0);
+        if (ship.spreadAmmo > 0) { spawnBeam(0.25); spawnBeam(-0.25); ship.spreadAmmo--; updateHud(); }
+    }
+
+    function shootMissile() {
+        if (ship.missileAmmo > 0 && !ship.dead) {
+            ship.missileAmmo--;
+            ship.lasers.push({
+                x: ship.x + 4/3 * ship.r * Math.cos(ship.a), y: ship.y - 4/3 * ship.r * Math.sin(ship.a),
+                xv: MISSILE_SPD * Math.cos(ship.a) / FPS, yv: -MISSILE_SPD * Math.sin(ship.a) / FPS,
+                a: ship.a, dist: 0, isMissile: true, target: null
+            });
+            updateHud();
+        }
+    }
+
+    function createExplosion(x, y) {
+        explosions.push({ x: x, y: y, r: 5, maxR: MISSILE_BLAST_RADIUS, alpha: 1.0 });
+        for(let i=0; i<20; i++) spawnParticle(x, y, 'red');
+    }
+    
+    function spawnParticle(x, y, color='white') {
+        particles.push({
+            x: x, y: y, xv: (Math.random() - 0.5) * (Math.random() * 10), yv: (Math.random() - 0.5) * (Math.random() * 10),
+            age: 0, life: 20 + Math.random() * 20, color: color
+        });
+    }
+
+    // FACTORY DE ENTIDADES
+    function createEntity(type, x, y, r) {
+        let hp = 1;
+        let color = '#777'; 
+        let subType = 'std';
+        let ent = {
+            type: type, subType: subType, x: x, y: y,
+            xv: 0, yv: 0, r: r, a: Math.random() * Math.PI * 2,
+            vert: Math.floor(Math.random() * (ROIDS_VERT + 1) + ROIDS_VERT / 2),
+            offs: [], hp: hp, maxHp: hp, color: color, flashTime: 0, isBoss: false,
+            reload: Math.random() * TURRET_RELOAD,
+            noWrap: false
+        };
+
+        let lvlMult = 1 + 0.05 * level;
+        
+        // Asignación específica por tipo
+        if (type === TYPE.ASTEROID) {
+            let rnd = Math.random();
+            let isHard = false; let isRed = false;
+            if (level >= 6 && rnd < 0.3) isHard = true;
+            if (level >= 11 && rnd < 0.5) isHard = true;
+            if (level >= 15 && rnd < 0.2) isRed = true;
+
+            if (isRed) { subType = 'red'; color = '#e33'; hp = HP_MED; } 
+            else if (isHard) { subType = 'hard'; color = '#b0c4de'; hp = HP_LARGE; } 
+            else {
+                if (r > 80) { color = '#8b4513'; hp = HP_LARGE; } 
+                else if (r > 40) { color = '#777'; hp = HP_MED; }
+                else { color = '#555'; hp = HP_SMALL; }
+            }
+            ent.xv = Math.random() * ROIDS_SPD * lvlMult / FPS * (Math.random() < 0.5 ? 1 : -1);
+            ent.yv = Math.random() * ROIDS_SPD * lvlMult / FPS * (Math.random() < 0.5 ? 1 : -1);
+            ent.subType = subType; ent.color = color; ent.hp = hp; ent.maxHp = hp;
+
+        } else if (type === TYPE.ALIEN) {
+            ent.hp = HP_ALIEN; ent.color = 'lime'; ent.r = 15;
+            
+        } else if (type === TYPE.TURRET) {
+            ent.hp = HP_TURRET; ent.color = 'cyan'; ent.r = 25;
+            ent.xv = Math.random() * ROIDS_SPD * lvlMult / FPS * (Math.random() < 0.5 ? 1 : -1);
+            ent.yv = Math.random() * ROIDS_SPD * lvlMult / FPS * (Math.random() < 0.5 ? 1 : -1);
+
+        } else if (type === TYPE.COMET) {
+            ent.hp = 1; ent.color = 'yellow'; ent.r = 10;
+            ent.xv = (Math.random() < 0.5 ? 1 : -1) * (350 / FPS); 
+            ent.yv = (Math.random() - 0.5) * (100 / FPS);
+            ent.noWrap = true; // El cometa siempre cruza y se va
+        }
+
+        for (let i = 0; i < ent.vert; i++) ent.offs.push(Math.random() * ROIDS_JAG * 2 + 1 - ROIDS_JAG);
+        return ent;
+    }
+
+    function spawnBoss() {
+        gameState.bossActive = true;
+        let bossLevel = Math.floor(level / 5);
+        let size = 250 + (bossLevel * 20);
+        let hp = HP_BOSS_BASE + (bossLevel * 150);
+        
+        let boss = {
+            type: TYPE.BOSS, x: canvas.width / 2, y: -size - 50, 
+            xv: 0, yv: 20 / FPS, w: size, h: size, r: size/2, 
+            a: 0, hp: hp, maxHp: hp, flashTime: 0, isBoss: true, color: '#800000', vert: 4, 
+            entering: true 
+        };
+        roids.push(boss);
+        gameState.minionTimer = 180; 
+    }
+
+    function showWarning(text) {
+        const warningEl = document.getElementById('warning-msg');
+        warningEl.innerText = text;
+        warningEl.style.display = 'block';
+        let blinkCount = 0;
+        let blinkInterval = setInterval(() => {
+            warningEl.style.visibility = (warningEl.style.visibility === 'hidden') ? 'visible' : 'hidden';
+            blinkCount++;
+            if(blinkCount > 6) { clearInterval(blinkInterval); warningEl.style.display = 'none'; }
+        }, 400);
+    }
+
+    function startMeteorShower(isChaos) {
+        gameState.warningTimer = 0;
+        gameState.meteorShower = true;
+        gameState.isChaosShower = isChaos;
+        
+        if (isChaos) {
+            gameState.meteorsLeft = 80 + (level * 2); 
+            gameState.maxMeteors = gameState.meteorsLeft;
+            showWarning("¡TORMENTA DEL CAOS!");
+        } else {
+            gameState.meteorsLeft = 120 + level * 3;
+            gameState.showerDirection = Math.floor(Math.random() * 4);
+            showWarning("¡CAMPO DE ASTEROIDES!");
+        }
+    }
+
+    function updateLevelLogic() {
+        // --- SPAWN DE COMETAS AMARILLOS (SOLO NIVEL 15+) ---
+        // Constraint: Nivel 15-19 max 1. Nivel 20+ max 3.
+        if (level >= 15 && !gameState.bossActive && !gameState.meteorShower) {
+            let maxComets = level >= 20 ? 3 : 1;
+            let currentComets = roids.filter(r => r.type === TYPE.COMET).length;
+            
+            // Solo intentar spawnear si no hemos alcanzado el límite
+            if (currentComets < maxComets) {
+                // Probabilidad reducida para que no sea spam
+                let chance = 0.005; // Ajustado
+                if (Math.random() < chance) {
+                    let y = Math.random() * canvas.height;
+                    // Spawnear fuera de pantalla
+                    let startX = Math.random() < 0.5 ? -20 : canvas.width + 20;
+                    let comet = createEntity(TYPE.COMET, startX, y, 10);
+                    // Asegurar que la velocidad X lo meta en pantalla
+                    if (startX < 0) comet.xv = Math.abs(comet.xv);
+                    else comet.xv = -Math.abs(comet.xv);
+                    
+                    roids.push(comet);
+                }
+            }
+        }
+
+        if (roids.length === 0 && !gameState.bossActive && gameState.warningTimer === 0 && gameState.spawnTimer === 0 && !gameState.meteorShower) {
+            level++;
+            document.getElementById('level-display').innerText = `NIVEL ${level}`;
+            
+            if (level % 20 === 0) gameState.warningTimer = 150; 
+            else if (level % 10 === 0) gameState.warningTimer = 150; 
+            else if (level % 5 === 0) { 
+                gameState.warningTimer = 150; 
+                showWarning(`⚠️ ALERTA JEFE NIVEL ${Math.floor(level/5)} ⚠️`); 
+                spawnBoss(); 
+            } 
+            else createAsteroidBelt();
+        }
+        
+        if (gameState.warningTimer > 0) {
+            gameState.warningTimer--;
+            if (gameState.warningTimer === 0) {
+                if (level % 20 === 0) startMeteorShower(true); 
+                else if (level % 10 === 0) startMeteorShower(false); 
+            }
+        }
+        
+        if (gameState.meteorShower) {
+            let spawnRate = gameState.isChaosShower ? 0.02 : 0.08;
+            if (gameState.meteorsLeft > 0 && Math.random() < spawnRate) { 
+                gameState.meteorsLeft--;
+                let x, y, xv, yv;
+                let speed = gameState.isChaosShower ? 300 : 150; 
+                let size = Math.random() * 20 + 10;
+                
+                if (gameState.isChaosShower) {
+                    if (Math.random() < 0.5) { 
+                        x = Math.random() < 0.5 ? 0 : canvas.width; y = Math.random() * canvas.height;
+                        xv = (x === 0 ? 1 : -1) * (Math.random() * 100 + speed) / FPS; yv = (Math.random() - 0.5) * speed / FPS;
+                    } else { 
+                        x = Math.random() * canvas.width; y = Math.random() < 0.5 ? 0 : canvas.height;
+                        xv = (Math.random() - 0.5) * speed / FPS; yv = (y === 0 ? 1 : -1) * (Math.random() * 100 + speed) / FPS;
+                    }
+                } else {
+                    let dir = gameState.showerDirection;
+                    if (dir === 0) { x = Math.random() * canvas.width; y = -50; xv = 0; yv = speed / FPS; }
+                    else if (dir === 1) { x = canvas.width + 50; y = Math.random() * canvas.height; xv = -speed / FPS; yv = 0; }
+                    else if (dir === 2) { x = Math.random() * canvas.width; y = canvas.height + 50; xv = 0; yv = -speed / FPS; }
+                    else { x = -50; y = Math.random() * canvas.height; xv = speed / FPS; yv = 0; }
+                }
+
+                let m = createEntity(TYPE.ASTEROID, x, y, size);
+                m.xv = xv; m.yv = yv;
+                m.color = gameState.isChaosShower ? 'orange' : '#888'; 
+                m.noWrap = true; 
+                roids.push(m);
+            }
+            if (gameState.meteorsLeft <= 0 && roids.length === 0) gameState.meteorShower = false;
+        }
+        
+        // --- LOGICA DE MINIONS (ALIENS) ---
+        // SOLO si el Boss está Activo Y es nivel 10 o más
+        if (gameState.bossActive && level >= 10) {
+            gameState.alienTimer--;
+            let alienCount = roids.filter(r => r.type === TYPE.ALIEN).length;
+            
+            // Limitado a 3 aliens a la vez
+            if (gameState.alienTimer <= 0 && alienCount < 3) {
+                let sideX = Math.random() < 0.5 ? -50 : canvas.width + 50;
+                let sideY = Math.random() * canvas.height;
+                let alien = createEntity(TYPE.ALIEN, sideX, sideY, 20);
+                alien.color = 'red'; 
+                roids.push(alien);
+                gameState.alienTimer = 120; // 2 segundos entre spawns
+            }
+        }
+    }
+
+    function createAsteroidBelt() {
+        roids = [];
+        let count = ROIDS_NUM + Math.floor(level/2);
+        for (let i = 0; i < count; i++) {
+            let x, y;
+            do {
+                x = Math.floor(Math.random() * canvas.width);
+                y = Math.floor(Math.random() * canvas.height);
+            } while (distBetweenPoints(ship.x, ship.y, x, y) < ROIDS_SIZE * 2 + ship.r);
+            
+            if (level >= 10 && Math.random() < 0.05 + (level * 0.005)) roids.push(createEntity(TYPE.TURRET, x, y, 25));
+            else roids.push(createEntity(TYPE.ASTEROID, x, y, Math.ceil(ROIDS_SIZE / 2)));
+        }
+    }
+    
+    function hitAsteroid(index, damage, fromMissile = false) {
+        if (!roids[index]) return false;
+
+        let r = roids[index]; r.hp -= damage; r.flashTime = 5;
+        if (Math.random() > 0.5) spawnParticle(r.x, r.y, r.color);
+        if (r.hp <= 0) { destroyAsteroid(index, fromMissile); return true; }
+        return false;
+    }
+
+    function destroyAsteroid(index, fromMissile = false) {
+        if (!roids[index]) return;
+
+        let r = roids[index]; let x = r.x; let y = r.y;
+        
+        let chance = PU_CHANCE;
+        if(r.type === TYPE.TURRET || r.subType === 'red') chance = 0.5;
+        if (!fromMissile && !r.isBoss && Math.random() < chance) createPowerUp(x, y);
+
+        if (r.type === TYPE.BOSS) {
+            gameState.bossActive = false; // ESTO DETIENE EL SPAWN DE ALIENS
+            let startX = x - r.w/2; let step = r.w / 4;
+            for(let i=0; i<4; i++) roids.push(createEntity(TYPE.ASTEROID, startX + step*i + step/2, y, ROIDS_HUGE_SIZE));
+            score += 5000;
+             for(let i=0; i<80; i++) spawnParticle(x + (Math.random()-0.5)*r.w, y + (Math.random()-0.5)*r.h, 'orange');
+        } else if (r.subType === 'red') {
+            roids.push(createEntity(TYPE.ALIEN, x, y, 15)); roids.push(createEntity(TYPE.ALIEN, x, y, 15)); score += 150;
+        } else if (r.type === TYPE.ASTEROID) {
+            let shouldSplit = !gameState.meteorShower; 
+            if (shouldSplit) {
+                if (r.r >= ROIDS_HUGE_SIZE) {
+                     roids.push(createEntity(TYPE.ASTEROID, x, y, ROIDS_SIZE)); roids.push(createEntity(TYPE.ASTEROID, x, y, ROIDS_SIZE)); score += 200;
+                } else if (r.r >= ROIDS_SIZE) { 
+                     roids.push(createEntity(TYPE.ASTEROID, x, y, Math.ceil(ROIDS_SIZE / 2))); roids.push(createEntity(TYPE.ASTEROID, x, y, Math.ceil(ROIDS_SIZE / 2))); score += 100;
+                } else if (r.r >= Math.ceil(ROIDS_SIZE / 2)) {
+                     roids.push(createEntity(TYPE.ASTEROID, x, y, Math.ceil(ROIDS_SIZE / 4))); roids.push(createEntity(TYPE.ASTEROID, x, y, Math.ceil(ROIDS_SIZE / 4))); score += 50;
+                } else { score += 20; }
+            } else { score += 10; }
+        } else if (r.type === TYPE.TURRET) {
+            score += 300; for(let i=0; i<15; i++) spawnParticle(x, y, 'cyan');
+        } else if (r.type === TYPE.ALIEN) {
+            score += 100; for(let i=0; i<10; i++) spawnParticle(x, y, 'lime');
+        }
+
+        if(!r.isBoss) for(let i=0; i<5; i++) spawnParticle(x, y, r.color);
+        roids.splice(index, 1);
+        document.getElementById('score').innerText = `PUNTOS: ${score}`;
+    }
+
+    function distBetweenPoints(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
+    function distToSegment(p, v, w) {
+        function sqr(x) { return x * x } function dist2(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) }
+        var l2 = dist2(v, w); if (l2 == 0) return dist2(p, v);
+        var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+        t = Math.max(0, Math.min(1, t)); return Math.sqrt(dist2(p, { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) }));
+    }
+    function rectCollidePoint(rectX, rectY, rectW, rectH, pX, pY) {
+        return (pX > rectX - rectW/2 && pX < rectX + rectW/2 && pY > rectY - rectH/2 && pY < rectY + rectH/2);
+    }
+    function lineRectCollide(x1, y1, x2, y2, rx, ry, rw, rh) {
+        return rectCollidePoint(rx, ry, rw, rh, x2, y2) || rectCollidePoint(rx, ry, rw, rh, (x1+x2)/2, (y1+y2)/2);
+    }
+
+    function explodeShip() {
+        ship.explodeTime = Math.ceil(30); 
+        for(let i=0; i<30; i++) spawnParticle(ship.x, ship.y, 'orange');
+    }
+
+    function gameOver() {
+        ship.dead = true;
+        document.getElementById('ui-layer').style.pointerEvents = 'auto';
+        document.getElementById('game-over-screen').classList.remove('hidden');
+        document.getElementById('final-score').innerText = `Puntaje Final: ${score}`;
+        document.querySelector('.controls-mobile').style.display = 'none';
+        document.getElementById('powerup-status').innerText = "";
+        
+        gameState.canRestart = true;
+    }
+    
+    function updateHud() {
+        let status = [];
+        
+        const drawBar = (current, max) => {
+            let filled = "▮".repeat(current);
+            let empty = "▯".repeat(max - current);
+            return `[${filled}${empty}]`;
+        };
+        
+        if (ship.shield > 0) {
+            status.push(`🛡️ ESCUDO: ${drawBar(ship.shield, SHIELD_MAX_HITS)}`);
+        }
+
+        let currentMagStep = Math.round((ship.magnetRange - MAGNET_BASE_RANGE) / MAGNET_UPGRADE_STEP);
+        let displayLevel = currentMagStep + 1; 
+        if (displayLevel > MAGNET_LEVELS) displayLevel = MAGNET_LEVELS;
+        
+        status.push(`🧲 RANGO : ${drawBar(displayLevel, MAGNET_LEVELS)}`);
+        
+        if (ship.spreadAmmo > 0) status.push(`🟢 SPREAD: ${ship.spreadAmmo}`);
+        if (ship.missileAmmo > 0) status.push(`🔴 MISILES: ${ship.missileAmmo}`);
+        if (ship.laserAmmo > 0) status.push(`⚡ LÁSER: ${ship.laserAmmo}`);
+        if (ship.satellites.length > 0) status.push(`🔵 ORBES: ${ship.satellites.length}/4`);
+        document.getElementById('powerup-status').innerText = status.join('\n');
+    }
+
+    /**
+     * BUCLE PRINCIPAL
+     */
+    function update() {
+        if(ship.dead) return;
+
+        updateLevelLogic();
+
+        if (ship.reloadTime > 0) ship.reloadTime--;
+        
+        let exploding = ship.explodeTime > 0;
+
+        let gp = navigator.getGamepads()[0];
+        let gpLeft = false, gpRight = false, gpThrust = false, gpFire = false;
+        
+        if (gp) {
+            if (gp.axes[0] < -0.3 || gp.buttons[14].pressed) gpLeft = true;
+            if (gp.axes[0] > 0.3 || gp.buttons[15].pressed) gpRight = true;
+            if (gp.buttons[0].pressed || gp.buttons[7].pressed || gp.buttons[12].pressed) gpThrust = true;
+            if (gp.buttons[2].pressed || gp.buttons[1].pressed || gp.buttons[5].pressed) gpFire = true;
+            let missilePressed = gp.buttons[3].pressed || gp.buttons[6].pressed;
+            if (missilePressed && !ship.gpMissileLock) {
+                shootMissile();
+                ship.gpMissileLock = true;
+            } else if (!missilePressed) {
+                ship.gpMissileLock = false;
+            }
+        }
+
+        if((keys.space || gpFire) && !exploding) shoot();
+
+        if (!exploding) {
+            if (keys.left || gpLeft) ship.a += TURN_SPEED / 180 * Math.PI / FPS;
+            if (keys.right || gpRight) ship.a -= TURN_SPEED / 180 * Math.PI / FPS;
+
+            if (keys.up || gpThrust) {
+                ship.thrusting = true;
+                ship.thrust.x += SHIP_THRUST * Math.cos(ship.a) / FPS;
+                ship.thrust.y -= SHIP_THRUST * Math.sin(ship.a) / FPS;
+                spawnParticle(ship.x - ship.r * Math.cos(ship.a), ship.y + ship.r * Math.sin(ship.a), 'cyan');
+            } else {
+                ship.thrusting = false;
+                ship.thrust.x -= FRICTION * ship.thrust.x / FPS;
+                ship.thrust.y -= FRICTION * ship.thrust.y / FPS;
+            }
+
+            let currentSpeed = Math.sqrt(ship.thrust.x**2 + ship.thrust.y**2);
+            if (currentSpeed > SHIP_MAX_SPEED) {
+                ship.thrust.x = (ship.thrust.x / currentSpeed) * SHIP_MAX_SPEED;
+                ship.thrust.y = (ship.thrust.y / currentSpeed) * SHIP_MAX_SPEED;
+            }
+
+            ship.x += ship.thrust.x;
+            ship.y += ship.thrust.y;
+
+            if (ship.x < 0 - ship.r) ship.x = canvas.width + ship.r;
+            else if (ship.x > canvas.width + ship.r) ship.x = 0 - ship.r;
+            if (ship.y < 0 - ship.r) ship.y = canvas.height + ship.r;
+            else if (ship.y > canvas.height + ship.r) ship.y = 0 - ship.r;
+        } else {
+            ship.explodeTime--;
+            if (ship.explodeTime === 0) {
+                lives--;
+                document.getElementById('lives').innerText = `VIDAS: ${lives}`;
+                if (lives === 0) gameOver();
+                else {
+                    let oldSats = ship.satellites.length > 0 ? ship.satellites.length - 1 : 0;
+                    let oldMag = ship.magnetRange;
+                    ship = newShip();
+                    ship.magnetRange = oldMag; 
+                    for(let k=0; k<oldSats; k++) ship.satellites.push({angle: 0, x:0, y:0});
+                    recalcSatellites();
+                    updateHud();
+                }
+            }
+        }
+        
+        if (!exploding) {
+            ship.satellites.forEach((sat, i) => {
+                sat.angle += SAT_ORBIT_SPEED;
+                sat.x = ship.x + Math.cos(sat.angle) * (ship.r + 30); 
+                sat.y = ship.y + Math.sin(sat.angle) * (ship.r + 30);
+            });
+        }
+        
+        for (let i = ship.beams.length - 1; i >= 0; i--) {
+            let b = ship.beams[i]; b.life--;
+            let angle = ship.a + b.angleOffset;
+            let start = {x: ship.x, y: ship.y};
+            let range = canvas.width * 0.8; 
+            let end = { x: ship.x + Math.cos(angle) * range, y: ship.y - Math.sin(angle) * range };
+
+            for (let j = roids.length - 1; j >= 0; j--) {
+                let r = roids[j];
+                let hit = false;
+                if (r.isBoss) { if (lineRectCollide(start.x, start.y, end.x, end.y, r.x, r.y, r.w, r.h)) hit = true; }
+                else { if (distToSegment({x: r.x, y: r.y}, start, end) < r.r) hit = true; }
+                if (hit) hitAsteroid(j, DMG_BEAM); 
+            }
+            if (b.life <= 0) ship.beams.splice(i, 1);
+        }
+
+        for (let i = ship.lasers.length - 1; i >= 0; i--) {
+            let l = ship.lasers[i];
+            if(l.isMissile) {
+                let boss = roids.find(r => r.isBoss);
+                if (boss) l.target = boss;
+                else if(!l.target || !roids.includes(l.target)) {
+                    let biggestR = -1;
+                    for(let r of roids) if(r.r > biggestR) { biggestR = r.r; l.target = r; }
+                }
+                if(l.target) {
+                    let dx = l.target.x - l.x; let dy = l.target.y - l.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist > 0) {
+                        let desXV = (dx / dist) * MISSILE_SPD / FPS; let desYV = (dy / dist) * MISSILE_SPD / FPS;
+                        let turnFactor = 0.08; 
+                        l.xv = l.xv * (1-turnFactor) + desXV * turnFactor; l.yv = l.yv * (1-turnFactor) + desYV * turnFactor;
+                        let currentSpeed = Math.sqrt(l.xv*l.xv + l.yv*l.yv);
+                        l.xv = (l.xv / currentSpeed) * MISSILE_SPD / FPS; l.yv = (l.yv / currentSpeed) * MISSILE_SPD / FPS;
+                    }
+                }
+            }
+            l.x += l.xv; l.y += l.yv;
+            l.dist += Math.sqrt(Math.pow(l.xv, 2) + Math.pow(l.yv, 2));
+            if (l.x < 0) l.x = canvas.width; else if (l.x > canvas.width) l.x = 0;
+            if (l.y < 0) l.y = canvas.height; else if (l.y > canvas.height) l.y = 0;
+            let maxDist = l.isMissile ? canvas.width * 2 : (l.maxDist || canvas.width * LASER_DIST);
+            if (l.dist > maxDist) { ship.lasers.splice(i, 1); continue; }
+        }
+        
+        for(let i = 0; i < enemyLasers.length; i++) {
+            let l = enemyLasers[i];
+            l.x += l.xv; l.y += l.yv;
+            if (l.x < 0 || l.x > canvas.width || l.y < 0 || l.y > canvas.height) { enemyLasers.splice(i, 1); i--; continue; }
+            
+            if(!exploding && distBetweenPoints(l.x, l.y, ship.x, ship.y) < ship.r) {
+                 if (ship.shield > 0) {
+                    ship.shield--;
+                    ship.blinkNum = 30; 
+                    updateHud();
+                    for(let k=0; k<10; k++) spawnParticle(l.x, l.y, 'gold'); 
+                } else if (ship.satellites.length > 0) {
+                        ship.satellites.pop(); recalcSatellites(); updateHud(); ship.blinkNum = 30;
+                } else { explodeShip(); }
+                enemyLasers.splice(i, 1); i--;
+            }
+        }
+        
+        for (let i = explosions.length - 1; i >= 0; i--) {
+            explosions[i].r += 5; explosions[i].alpha -= 0.04;
+            for (let j = roids.length - 1; j >= 0; j--) {
+                let r = roids[j];
+                if (distBetweenPoints(explosions[i].x, explosions[i].y, r.x, r.y) < explosions[i].r + r.r) hitAsteroid(j, DMG_LASER * 5, true); 
+            }
+            if (explosions[i].alpha <= 0) explosions.splice(i, 1);
+        }
+
+        for (let i = 0; i < roids.length; i++) {
+            let r = roids[i];
+            
+            if (r.type === TYPE.ALIEN) {
+                let dx = ship.x - r.x; let dy = ship.y - r.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist > 0 && !exploding) {
+                    r.xv = (dx / dist) * ALIEN_SPD / FPS; r.yv = (dy / dist) * ALIEN_SPD / FPS;
+                }
+            }
+            if (r.type === TYPE.TURRET) {
+                r.reload--;
+                let dist = distBetweenPoints(r.x, r.y, ship.x, ship.y);
+                if (dist < TURRET_RANGE && r.reload <= 0 && !exploding) {
+                    let angle = Math.atan2(-(ship.y - r.y), ship.x - r.x);
+                    enemyLasers.push({ x: r.x, y: r.y, xv: ENEMY_LASER_SPD * Math.cos(-angle) / FPS, yv: ENEMY_LASER_SPD * Math.sin(-angle) / FPS });
+                    r.reload = TURRET_RELOAD;
+                }
+            }
+
+            r.x += r.xv; r.y += r.yv;
+            if (r.flashTime > 0) r.flashTime--;
+            
+            if (r.isBoss) {
+                if (r.entering) {
+                    if(r.y > 100) { r.yv = 3 / FPS; r.entering = false; }
+                }
+            } else {
+                if (r.noWrap) {
+                    if (r.x < -100 || r.x > canvas.width + 100 || r.y < -100 || r.y > canvas.height + 100) {
+                        roids.splice(i, 1); i--; continue; 
+                    }
+                } else {
+                    if (r.x < 0 - r.r) r.x = canvas.width + r.r; else if (r.x > canvas.width + r.r) r.x = 0 - r.r;
+                    if (r.y < 0 - r.r) r.y = canvas.height + r.r; else if (r.y > canvas.height + r.r) r.y = 0 - r.r;
+                }
+            }
+        }
+        
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            let p = powerups[i];
+            
+            if (!ship.dead) {
+                let dist = distBetweenPoints(ship.x, ship.y, p.x, p.y);
+                if (dist < ship.magnetRange) {
+                    let angle = Math.atan2(ship.y - p.y, ship.x - p.x);
+                    p.xv = Math.cos(angle) * (400 / FPS); 
+                    p.yv = Math.sin(angle) * (400 / FPS);
+                }
+            }
+
+            p.x += p.xv; p.y += p.yv; p.age++;
+            if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
+            if (p.age > p.life) { powerups.splice(i, 1); continue; }
+            
+            if (!ship.dead && distBetweenPoints(ship.x, ship.y, p.x, p.y) < ship.r + p.r) {
+                if (p.type === PU_TYPE.SPREAD) ship.spreadAmmo += 20;
+                else if (p.type === PU_TYPE.SATELLITE) {
+                    if (ship.satellites.length < MAX_SATELLITES) { ship.satellites.push({ angle: 0, x: 0, y: 0 }); recalcSatellites(); } 
+                    else score += 500;
+                } else if (p.type === PU_TYPE.MISSILE) ship.missileAmmo += 1;
+                else if (p.type === PU_TYPE.LASER) ship.laserAmmo += 5; 
+                else if (p.type === PU_TYPE.MAGNET) { 
+                    if (ship.magnetRange < MAGNET_MAX_RANGE) {
+                        ship.magnetRange += MAGNET_UPGRADE_STEP;
+                        if (ship.magnetRange > MAGNET_MAX_RANGE) ship.magnetRange = MAGNET_MAX_RANGE;
+                    } else {
+                        score += 200; 
+                    }
+                } else if (p.type === PU_TYPE.SHIELD) {
+                    ship.shield = SHIELD_MAX_HITS;
+                }
+
+                updateHud(); powerups.splice(i, 1);
+            }
+        }
+
+        if (!exploding && ship.blinkNum === 0) {
+            for (let i = 0; i < roids.length; i++) {
+                let r = roids[i];
+                let hit = false;
+                if(r.isBoss) { if (rectCollidePoint(r.x, r.y, r.w, r.h, ship.x, ship.y)) hit = true; } 
+                else { if (distBetweenPoints(ship.x, ship.y, r.x, r.y) < ship.r + r.r) hit = true; }
+
+                if (hit) {
+                    if(r.type === TYPE.ALIEN || r.type === TYPE.COMET) hitAsteroid(i, 999);
+                    
+                    if (ship.shield > 0) {
+                        ship.shield--;
+                        ship.blinkNum = 60; 
+                        updateHud();
+                        let angle = Math.atan2(ship.y - r.y, ship.x - r.x);
+                        ship.thrust.x += Math.cos(angle) * 5; 
+                        ship.thrust.y += Math.sin(angle) * 5;
+                        
+                        hitAsteroid(i, DMG_LASER); 
+                        for(let k=0; k<15; k++) spawnParticle((ship.x+r.x)/2, (ship.y+r.y)/2, 'gold');
+
+                    } else if (ship.satellites.length > 0) {
+                        ship.satellites.pop(); recalcSatellites(); updateHud();
+                        ship.blinkNum = Math.ceil(60 / 30);
+                        ship.thrust.x = -ship.thrust.x * 2; ship.thrust.y = -ship.thrust.y * 2;
+                    } else {
+                        explodeShip(); hitAsteroid(i, DMG_LASER); 
+                    }
+                    break;
+                }
+            }
+        }
+
+        for (let i = roids.length - 1; i >= 0; i--) {
+            let r = roids[i];
+            for (let j = ship.lasers.length - 1; j >= 0; j--) {
+                let l = ship.lasers[j];
+                let hit = false;
+                if (r.isBoss) { if (rectCollidePoint(r.x, r.y, r.w, r.h, l.x, l.y)) hit = true; } 
+                else { if (distBetweenPoints(r.x, r.y, l.x, l.y) < r.r) hit = true; }
+                
+                if (hit) {
+                    if (l.isMissile) createExplosion(l.x, l.y); else hitAsteroid(i, DMG_LASER);
+                    ship.lasers.splice(j, 1);
+                    if(roids[i] !== r) break; 
+                }
+            }
+        }
+        
+        for(let i = particles.length - 1; i >= 0; i--){
+            particles[i].x += particles[i].xv; particles[i].y += particles[i].yv; particles[i].age++;
+            if(particles[i].age > particles[i].life) particles.splice(i, 1);
+        }
+        
+        if (ship.blinkNum > 0) { ship.blinkTime--; if (ship.blinkTime === 0) { ship.blinkTime = 30; ship.blinkNum--; } }
+    }
+
+    function draw() {
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let blinkOn = ship.blinkNum % 2 === 0;
+        let exploding = ship.explodeTime > 0;
+
+        for(let p of particles){
+             ctx.save(); ctx.shadowBlur = 10; ctx.shadowColor = p.color; ctx.fillStyle = p.color;
+             ctx.globalAlpha = 1 - (p.age / p.life); ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2); ctx.fill();
+             ctx.restore(); ctx.globalAlpha = 1.0;
+        }
+        
+        for(let e of explosions) {
+            ctx.save(); ctx.globalAlpha = e.alpha; ctx.fillStyle = "rgba(255, 100, 50, 0.5)";
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+        }
+
+        for(let pu of powerups) {
+            ctx.save();
+            let color, label;
+            switch(pu.type) {
+                case PU_TYPE.SPREAD: color='lime'; label='S'; break;
+                case PU_TYPE.SATELLITE: color='cyan'; label='O'; break;
+                case PU_TYPE.MISSILE: color='red'; label='M'; break;
+                case PU_TYPE.LASER: color='gold'; label='⚡'; break;
+                case PU_TYPE.MAGNET: color='white'; label='🧲'; break; 
+                case PU_TYPE.SHIELD: color='yellow'; label='🛡️'; break; 
+            }
+            ctx.shadowBlur = 15; ctx.shadowColor = color; ctx.strokeStyle = color; ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.lineWidth = 2; let pulse = Math.sin(pu.age * 0.1) * 2;
+            ctx.beginPath(); ctx.arc(pu.x, pu.y, pu.r + pulse, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "white"; ctx.font = "bold 16px Courier"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(label, pu.x, pu.y); ctx.restore();
+        }
+
+        if (!exploding && blinkOn && !ship.dead) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(ship.x, ship.y, ship.magnetRange, 0, Math.PI * 2);
+            
+            let intensity = (ship.magnetRange - MAGNET_BASE_RANGE) / (MAGNET_MAX_RANGE - MAGNET_BASE_RANGE);
+            ctx.strokeStyle = `rgba(180, 255, 255, ${0.1 + (intensity * 0.2)})`; 
+            ctx.lineWidth = 1;
+            ctx.shadowBlur = 5 + (intensity * 5); 
+            ctx.shadowColor = 'cyan';
+            
+            ctx.stroke();
+            
+            ctx.fillStyle = `rgba(0, 255, 255, 0.02)`;
+            ctx.fill();
+            ctx.restore();
+
+            if (ship.shield > 0) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(ship.x, ship.y, ship.r + 12, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 215, 0, 0.15)`; 
+                ctx.fill();
+                ctx.strokeStyle = `rgba(255, 215, 0, 0.8)`; 
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = 'gold';
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(-ship.a + Math.PI/2); 
+            ctx.shadowBlur = 10; ctx.shadowColor = "cyan"; ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, -ship.r); ctx.lineTo(ship.r * 2/3, ship.r); ctx.lineTo(-ship.r * 2/3, ship.r); ctx.closePath(); ctx.stroke();
+            if(ship.thrusting){
+                ctx.shadowColor = "orange"; ctx.strokeStyle = "orange";
+                ctx.beginPath(); ctx.moveTo(-ship.r/3, ship.r); ctx.lineTo(0, ship.r * 2); ctx.lineTo(ship.r/3, ship.r); ctx.stroke();
+            }
+            ctx.restore(); 
+            for (let sat of ship.satellites) {
+                ctx.save(); ctx.shadowBlur = 5; ctx.shadowColor = "cyan"; ctx.fillStyle = "cyan";
+                ctx.beginPath(); ctx.arc(sat.x, sat.y, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.beginPath(); ctx.moveTo(ship.x, ship.y); ctx.lineTo(sat.x, sat.y); ctx.stroke();
+                ctx.restore();
+            }
+        }
+        
+        for(let b of ship.beams) {
+            ctx.save(); let angle = ship.a + b.angleOffset;
+            let range = canvas.width * 0.8; let endX = ship.x + Math.cos(angle) * range; let endY = ship.y - Math.sin(angle) * range;
+            ctx.globalAlpha = b.life / b.maxLife; ctx.shadowBlur = 20; ctx.shadowColor = "gold"; 
+            ctx.strokeStyle = "rgba(255, 215, 0, 0.8)"; ctx.lineWidth = 15; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(ship.x, ship.y); ctx.lineTo(endX, endY); ctx.stroke();
+            ctx.lineWidth = 5; ctx.strokeStyle = "white"; ctx.beginPath(); ctx.moveTo(ship.x, ship.y); ctx.lineTo(endX, endY); ctx.stroke();
+            ctx.restore();
+        }
+
+        for (let i = 0; i < ship.lasers.length; i++) {
+            ctx.save(); let l = ship.lasers[i];
+            if(l.isMissile) {
+                ctx.shadowBlur = 20; ctx.shadowColor = "red"; ctx.fillStyle = "red";
+                ctx.beginPath(); ctx.arc(l.x, l.y, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = "rgba(255,0,0,0.5)"; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x - l.xv * 5, l.y - l.yv * 5); ctx.stroke();
+            } else {
+                let color = l.isSatelliteShot ? "cyan" : "salmon";
+                ctx.shadowBlur = 15; ctx.shadowColor = color; ctx.fillStyle = color;
+                ctx.beginPath(); ctx.arc(l.x, l.y, 2, 0, Math.PI * 2, false); ctx.fill();
+            }
+            ctx.restore();
+        }
+        
+        ctx.save(); ctx.shadowBlur = 10; ctx.shadowColor = 'magenta'; ctx.fillStyle = 'magenta';
+        for (let l of enemyLasers) { ctx.beginPath(); ctx.arc(l.x, l.y, 4, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
+
+        for (let i = 0; i < roids.length; i++) {
+            const r = roids[i]; ctx.save();
+            if (r.flashTime > 0) { ctx.strokeStyle = "white"; ctx.shadowColor = "white"; ctx.shadowBlur = 15; } 
+            else { ctx.strokeStyle = r.color; ctx.shadowColor = r.color; ctx.shadowBlur = 5; }
+            ctx.lineWidth = 2;
+
+            if (r.isBoss) {
+                ctx.rect(r.x - r.w/2, r.y - r.h/2, r.w, r.h);
+                ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; ctx.fill();
+                ctx.beginPath(); ctx.moveTo(r.x - r.w/2, r.y); ctx.lineTo(r.x + r.w/2, r.y);
+                ctx.moveTo(r.x, r.y - r.h/2); ctx.lineTo(r.x, r.y + r.h/2); ctx.stroke();
+                
+                ctx.restore(); ctx.save();
+                let barH = 300; let barX = canvas.width - 40; let barY = canvas.height/2 - barH/2;
+                ctx.fillStyle = "#330000"; ctx.fillRect(barX, barY, 20, barH);
+                ctx.strokeStyle = "red"; ctx.strokeRect(barX, barY, 20, barH);
+                let fillH = barH * (r.hp / r.maxHp);
+                ctx.fillStyle = "red"; ctx.fillRect(barX, barY + (barH - fillH), 20, fillH);
+                ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("BOSS", barX + 10, barY - 10);
+                ctx.restore(); ctx.save();
+                
+            } else if (r.type === TYPE.TURRET) {
+                ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 255, 255, 0.1)"; ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(r.x, r.y, 8, 0, Math.PI * 2); ctx.fillStyle = "cyan"; ctx.fill();
+                
+            } else if (r.type === TYPE.ALIEN) {
+                ctx.translate(r.x, r.y); let angle = Math.atan2(r.yv, r.xv); ctx.rotate(angle);
+                ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-10, 7); ctx.lineTo(-10, -7); ctx.closePath(); ctx.stroke();
+                
+            } else {
+                ctx.beginPath();
+                for (let j = 0; j < r.vert; j++) {
+                    ctx.lineTo(r.x + r.r * r.offs[j] * Math.cos(r.a + j * Math.PI * 2 / r.vert),
+                               r.y + r.r * r.offs[j] * Math.sin(r.a + j * Math.PI * 2 / r.vert));
+                }
+                ctx.closePath(); ctx.stroke();
+                if(r.type === TYPE.COMET) {
+                    ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x - r.xv*3, r.y - r.yv*3); 
+                    ctx.strokeStyle = "rgba(255,255,0,0.5)"; ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+        
+        if (gameState.meteorShower && gameState.isChaosShower) {
+            ctx.save();
+            let barW = canvas.width * 0.6;
+            let barH = 20;
+            let barX = canvas.width/2 - barW/2;
+            let barY = 30;
+            
+            ctx.fillStyle = "rgba(50, 0, 0, 0.8)";
+            ctx.fillRect(barX, barY, barW, barH);
+            ctx.strokeStyle = "orange";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(barX, barY, barW, barH);
+            
+            let pct = (gameState.meteorsLeft + roids.length) / (gameState.maxMeteors);
+            if(pct > 1) pct = 1;
+            
+            ctx.fillStyle = "orange";
+            ctx.fillRect(barX, barY, barW * pct, barH);
+            
+            ctx.fillStyle = "white";
+            ctx.font = "bold 16px Courier";
+            ctx.textAlign = "center";
+            ctx.fillText("TORMENTA DE METEORITOS", canvas.width/2, barY - 10);
+            ctx.restore();
+        }
+    }
+
+    let animationId;
+    function loop() { 
+        if (ship && ship.dead) {
+            let gp = navigator.getGamepads()[0];
+            if (gp) {
+                if (gp.buttons[9].pressed || gp.buttons[0].pressed) {
+                    if (gameState.canRestart) {
+                        resetGame();
+                        gameState.canRestart = false; 
+                    }
+                } else {
+                    gameState.canRestart = true;
+                }
+            }
+        }
+
+        if(ship && !ship.dead) { 
+            update(); 
+            draw(); 
+            animationId = requestAnimationFrame(loop); 
+        } else if (ship && ship.dead) {
+            draw();
+            animationId = requestAnimationFrame(loop); 
+        } 
+    }
+
+    function startGame() {
+        level = 0; score = 0; lives = 3; powerups = []; explosions = []; enemyLasers = [];
+        gameState = { bossActive: false, warningTimer: 0, spawnTimer: 0, minionTimer: 0, meteorShower: false, meteorTimer: 0, meteorsLeft: 0, isChaosShower: false, alienTimer: 0, canRestart: true };
+        document.getElementById('warning-msg').style.display = 'none';
+        ship = newShip(); createAsteroidBelt();
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('ui-layer').style.pointerEvents = 'none'; 
+        if(window.matchMedia("(hover: none) and (pointer: coarse)").matches) document.querySelector('.controls-mobile').style.display = 'flex';
+        document.getElementById('score').innerText = `PUNTOS: 0`;
+        document.getElementById('lives').innerText = `VIDAS: 3`;
+        updateHud(); if (animationId) cancelAnimationFrame(animationId); loop();
+    }
+
+    function resetGame() { startGame(); }
+    ctx.fillStyle = "black"; ctx.fillRect(0,0,canvas.width, canvas.height);
+</script>
+</body>
+</html>
